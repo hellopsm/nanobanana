@@ -6,20 +6,72 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card } from "@/components/ui/card"
-import { Upload, ImageIcon } from "lucide-react"
+import { Upload, ImageIcon, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 
 export function EditorSection() {
   const [prompt, setPrompt] = useState("")
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [generatedResult, setGeneratedResult] = useState<string | null>(null)
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      const reader = new FileReader()
-      reader.onload = (event) => {
-        setSelectedImage(event.target?.result as string)
+      try {
+        const formData = new FormData()
+        formData.append('image', file)
+
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to upload image')
+        }
+
+        const { imageUrl } = await response.json()
+        setSelectedImage(imageUrl)
+        toast.success('Image uploaded successfully!')
+      } catch (error) {
+        console.error('Upload error:', error)
+        toast.error('Failed to upload image')
       }
-      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleGenerate = async () => {
+    if (!selectedImage || !prompt.trim()) {
+      toast.error('Please upload an image and enter a prompt')
+      return
+    }
+
+    setIsGenerating(true)
+    try {
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          prompt: prompt.trim(),
+          imageUrl: selectedImage
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to generate result')
+      }
+
+      const { result } = await response.json()
+      setGeneratedResult(result)
+      toast.success('Image processed successfully!')
+    } catch (error) {
+      console.error('Generation error:', error)
+      toast.error('Failed to process image')
+    } finally {
+      setIsGenerating(false)
     }
   }
 
@@ -98,9 +150,23 @@ export function EditorSection() {
                 />
               </div>
 
-              <Button className="w-full bg-banana-primary hover:bg-banana-primary/90 text-white" size="lg">
-                <span className="mr-2">⚡</span>
-                Generate Now
+              <Button
+                className="w-full bg-banana-primary hover:bg-banana-primary/90 text-white"
+                size="lg"
+                onClick={handleGenerate}
+                disabled={isGenerating || !selectedImage || !prompt.trim()}
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <span className="mr-2">⚡</span>
+                    Generate Now
+                  </>
+                )}
               </Button>
             </div>
           </Card>
@@ -117,12 +183,43 @@ export function EditorSection() {
               </div>
             </div>
 
-            <div className="flex items-center justify-center h-96 border-2 border-dashed border-border rounded-lg bg-muted/30">
-              <div className="text-center">
-                <ImageIcon className="w-16 h-16 mx-auto text-muted-foreground/50 mb-4" />
-                <p className="text-sm font-medium mb-1">Ready for instant generation</p>
-                <p className="text-xs text-muted-foreground">Enter your prompt and unleash the power</p>
-              </div>
+            <div className="border-2 border-dashed border-border rounded-lg bg-muted/30 min-h-96">
+              {isGenerating ? (
+                <div className="flex items-center justify-center h-96">
+                  <div className="text-center">
+                    <Loader2 className="w-16 h-16 mx-auto text-banana-primary mb-4 animate-spin" />
+                    <p className="text-sm font-medium mb-1">Processing your image...</p>
+                    <p className="text-xs text-muted-foreground">This may take a few moments</p>
+                  </div>
+                </div>
+              ) : generatedResult ? (
+                <div className="p-6">
+                  <div className="bg-white rounded-lg border p-4">
+                    <h5 className="font-medium mb-2 text-sm text-muted-foreground">AI Response:</h5>
+                    <div className="prose prose-sm max-w-none">
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{generatedResult}</p>
+                    </div>
+                  </div>
+                  {selectedImage && (
+                    <div className="mt-4">
+                      <h5 className="font-medium mb-2 text-sm text-muted-foreground">Original Image:</h5>
+                      <img
+                        src={selectedImage}
+                        alt="Original"
+                        className="max-w-full h-auto rounded-lg border"
+                      />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-96">
+                  <div className="text-center">
+                    <ImageIcon className="w-16 h-16 mx-auto text-muted-foreground/50 mb-4" />
+                    <p className="text-sm font-medium mb-1">Ready for instant generation</p>
+                    <p className="text-xs text-muted-foreground">Upload an image and enter a prompt to get started</p>
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
         </div>
