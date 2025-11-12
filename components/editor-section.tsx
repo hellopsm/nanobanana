@@ -49,6 +49,14 @@ export function EditorSection() {
 
     setIsGenerating(true)
     try {
+      console.log('Frontend: Starting generation request')
+      console.log('Frontend: Prompt:', prompt.trim().substring(0, 100))
+      console.log('Frontend: Image URL length:', selectedImage.length)
+
+      // 创建AbortController用于5分钟超时
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 300000) // 5分钟
+
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: {
@@ -57,19 +65,34 @@ export function EditorSection() {
         body: JSON.stringify({
           prompt: prompt.trim(),
           imageUrl: selectedImage
-        })
+        }),
+        signal: controller.signal
       })
 
+      clearTimeout(timeoutId) // 清除超时定时器
+
+      console.log('Frontend: Response status:', response.status)
+
+      const responseData = await response.json()
+      console.log('Frontend: Response data:', responseData)
+
       if (!response.ok) {
-        throw new Error('Failed to generate result')
+        throw new Error(responseData.error || 'Failed to generate result')
       }
 
-      const { result } = await response.json()
-      setGeneratedResult(result)
-      toast.success('Image processed successfully!')
+      if (responseData.result) {
+        setGeneratedResult(responseData.result)
+        toast.success('Image processed successfully!')
+      } else {
+        throw new Error('No result returned from API')
+      }
     } catch (error) {
-      console.error('Generation error:', error)
-      toast.error('Failed to process image')
+      console.error('Frontend: Generation error:', error)
+      if (error.name === 'AbortError') {
+        toast.error('Request timeout - please try again with a smaller image or simpler prompt')
+      } else {
+        toast.error(`Failed to process image: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
     } finally {
       setIsGenerating(false)
     }
